@@ -22,6 +22,10 @@ containers:
     - !Sh "/work/rustup.sh -y"
     - !Remove /work/rustup.sh
 
+    # cargo is installed but it is not in the path yet, add to path for short duration
+    - !Env
+      PATH: /work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
     # install Xargo (cross compiling helper)
     - !Sh "cargo install xargo"
 
