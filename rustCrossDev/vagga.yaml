@@ -27,7 +27,7 @@ containers:
       PATH: /work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # install Xargo (cross compiling helper)
-    - !Sh "cargo install xargo"
+    - !Sh "/work/.home/.cargo/bin/cargo install xargo"
 
     # container's more permanent env
     # !!! Rust installs to ~/.cargo/bin
