@@ -1,0 +1,55 @@
+
+
+# vagga configuration for a cross rust dev environment
+
+# compiles rust for a target other than the container's host
+
+containers:
+  rustCrossDev:
+    setup:
+    - !Ubuntu xenial
+
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+    # rustup requires curl
+    - !Install [curl]
+
+    # rustup install script
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.sh
+      mode: 0o744
+    - !Sh "/work/rustup.sh -y"
+    - !Remove /work/rustup.sh
+
+    # install Xargo (cross compiling helper)
+    - !Sh "cargo install xargo"
+
+    # container's more permanent env
+    # !!! Rust installs to ~/.cargo/bin
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+
+    
+commands:
+  test: !Command
+    description: Test xargo is installed in container
+    container: rustCrossDev
+    run: |
+      which xargo
+      xargo --version
+
+  list: !Command
+    description: List container's root directory, recursive
+    container: rustCrossDev
+    run: |
+      ls -R /
+
+  run: !Command
+    description: Build blinky, burn to target, and run remote debugger
+    container: rustCrossDev
+    run: |
+      xargo build --target thumbv7m-none-eabi
+
+
