@@ -5,29 +5,33 @@
 # compiles rust for a target other than the container's host
 
 containers:
-  rustCrossDev:
+  rustDev:
     setup:
     - !Ubuntu xenial
 
+    # C compiler and other tools, to remain in container
     # overkill? but still doesn't install curl?
     - !Install [build-essential, ca-certificates]
-    # rustup requires curl
-    - !Install [curl]
+
+    # rustup.sh invokes curl
+    # Temporary to container
+    - !BuildDeps [curl]
+
+    # Temporary def of HOME since rustup.sh installs to it
+    - !Env
+      HOME: /work/.home
+    - !EnsureDir /work/.home
+    - !EnsureDir /work/.home/.cargo/bin
 
     # rustup install script
     - !Download
       url: https://sh.rustup.rs
       path: /work/rustup.sh
       mode: 0o744
+    # -y means: ignore apparent HOME discrepancies
     - !Sh "/work/rustup.sh -y"
     - !Remove /work/rustup.sh
-
-    # cargo is installed but it is not in the path yet, add to path for short duration
-    - !Env
-      PATH: /work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-    # install Xargo (cross compiling helper)
-    - !Sh "/work/.home/.cargo/bin/cargo install xargo"
+    # rustup is installed, but rustup.sh is gone
 
     # container's more permanent env
     # !!! Rust installs to ~/.cargo/bin
@@ -35,9 +39,30 @@ containers:
       PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       HOME: /work/.home
 
+
+  # Subcontainer
+  # Apparently the base container must be finished before its contents (cargo) can be invoked during setup
+  rustCrossDev:
+    setup:
+    - !Container rustDev
+    # install Xargo (Rust cross compiling helper)
+    - !Sh "/work/.home/.cargo/bin/cargo install xargo"
+
+    # Apparently the base container's env is not inherited by subcontainer?
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+    
     
 commands:
-  test: !Command
+  testCargo: !Command
+    description: Test cargo is installed in container
+    container: rustDev
+    run: |
+      which cargo
+      cargo --version
+
+  testXargo: !Command
     description: Test xargo is installed in container
     container: rustCrossDev
     run: |
