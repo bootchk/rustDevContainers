@@ -1,2 +1,7 @@
 .home
+
+# the container
 .vagga
+
+# toolchain installed by rust
+target
