@@ -35,12 +35,14 @@ One advantage of Vagrant/Dock is that there exist repositories which create cont
 This aims to do the same for Vagga.
 
 Quick start:
+-
+
 - install Vagga
 - clone this repository
 - open a terminal
 - >cd to one of the example container directories e.g. rustDev
 - >vagga   (ask vagga to print list of commands defined in the config file)
-- >vagga <command>  (e.g. testCargo, or testXargo or any other defined  command)
+- >vagga foo  (e.g. testCargo, or testXargo or any other defined  command)
 - expect a minutes-long download and install, then see the final output from the command
 
 In rustDev:
@@ -55,6 +57,7 @@ In rustCrossDev:
 See my post at https://wordpress.com/post/plashless.wordpress.com/3454
 
 To install vagga:
+-
 
     echo 'deb [arch=amd64 trusted=yes] https://ubuntu.zerogw.com vagga main' | sudo tee /etc/apt/sources.list.d/vagga.list
     sudo apt-get update
@@ -66,31 +69,32 @@ About the contents and what you can delete:
 
 Part of the example:
 
-src/main.rs   part of the example, you should augment
-Cargo.toml  manifest of the project/program/app, you should augment
+ - src/main.rs   part of the example, you should augment
+ - Cargo.toml  manifest of the project/program/app, you should augment
 
-foo.json   target specification, with link flags for bare, no changes usually unless you change ARM architecture from Cortex M4
-layout.ld  linker script (.ld) for a specific chip, change it to describe memory and peripherals of your chip
+ - foo.json   target specification, with link flags for bare, no changes usually unless you change ARM architecture from Cortex M4
+ - layout.ld  linker script (.ld) for a specific chip, change it to describe memory and peripherals of your chip
 
-vagga.yml   configuration for vagga, no changes usually unless you rename files e.g. foo.json
-.gitignore git config that excludes artifacts (see below) from the repository, no changes usually
+ - vagga.yml   configuration for vagga, no changes usually unless you rename files e.g. foo.json
+ - .gitignore git config that excludes artifacts (see below) from the repository, no changes usually
 
 
 Hidden files: delete them at will, vagga will recreate
 
-.vagga  directory created by vagga to store the container, delete it at will, it will be recreated
-.home   directory created during container build
+ - .vagga  directory created by vagga to store the container, delete it at will, it will be recreated
+ - .home   directory created during container build
 
 Artifacts created by Rust
 
-target   a directory, where Rust caches builds
-Cargo.lock
+ - target   a directory, where Rust caches builds
+ - Cargo.lock
 
 
 
 Notes:
+-
 
-Linker flags are in foo.json (the target spec.)
+Linker flags are in foo.json (the target spec.)  Some people put them in cargo.toml
 Omitted post link flags   "-lm", "-lgcc", "-lnosys"
 Added to pre-link-args  "-nostartfiles",     to omit linking crt0
 

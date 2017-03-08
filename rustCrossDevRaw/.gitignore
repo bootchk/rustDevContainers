@@ -5,7 +5,3 @@
 
 # toolchain installed by rust
 target
-
-Cargo.lock
-
-.cargo

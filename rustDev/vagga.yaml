@@ -1,0 +1,59 @@
+
+
+# vagga configuration for a simple rust dev environment
+
+containers:
+  rustdev:
+    setup:
+    - !Ubuntu xenial
+
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+
+    # rustup requires curl
+    - !Install [curl]
+
+    # Temporary def of HOME since rustup.sh installs to it
+    - !Env
+      HOME: /work/.home
+    - !EnsureDir /work/.home
+    - !EnsureDir /work/.home/.cargo/bin
+
+    # rustup install script
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.sh
+      mode: 0o744
+    - !Sh "/work/rustup.sh -y"
+    - !Remove /work/rustup.sh
+
+    # container's more permanent env
+    # !!! Rust installs to ~/.cargo/bin
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+
+    
+commands:
+  test: !Command
+    description: Test rustc is installed in container
+    container: rustdev
+    run: |
+      which rustc
+      rustc --version
+
+  list: !Command
+    description: List container's root directory, recursive
+    container: rustdev
+    run: |
+      ls -R /
+
+  run: !Command
+    description: Build and run helloWorld
+    container: rustdev
+    run: |
+      cargo build
+      ./target/debug/helloWorld
+
+    
+      
