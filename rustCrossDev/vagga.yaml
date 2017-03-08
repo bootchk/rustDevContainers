@@ -35,8 +35,17 @@ containers:
       mode: 0o744
     # -y means: ignore apparent HOME discrepancies
     - !Sh "/work/rustup.sh -y"
+
     - !Remove /work/rustup.sh
-    # rustup is installed, but rustup.sh is gone
+
+    # Ensure rustup is installed
+    # Note absolute path until container environ is set
+    #    rustc --version
+    - !Sh |
+        /work/.home/.cargo/bin/rustup --version
+        echo ">>>>Done setup container rustDev"
+        echo " "
+
 
     # container's more permanent env
     # !!! Rust installs to ~/.cargo/bin
@@ -73,17 +82,30 @@ containers:
     # - !Sh "rustup target add thumbv7em-none-eabi"
     # See Rust issue #709, rustup target list is misleading, you may need to build your own crates
 
+    # Ensure linker for ARM is installed
+    # Ensure Xargo is installed
+    - !Sh |
+        arm-none-eabi-gcc --version
+        xargo --version
+        echo "Done setup container rustCrossARMDev"
+    
     # Apparently the base container's env is not inherited by subcontainer?
     environ:
       PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       HOME: /work/.home
       USER: bootch
-    
-  # Subcontainer: cross compiling to bare metal ARM
-  
 
-  # container that cross compiles to bare metal arm, where app not use std crate, 
-  # and core crate is not availble, but cross-compiled from source
+    
+    
+
+
+
+  # Subcontainer; cross compiling to bare metal ARM.
+  # Where app not use std crate, and core crate is not available, but cross-compiled from source
+
+  # Not using target name "thumbv7em-none-eabi" because that is in Rust's list of supported targets,
+  # but we need a custom target definition that has different link options (for bare)
+
   rustCrossBareARMDev:
     setup:
     - !Container rustCrossARMDev
@@ -93,32 +115,50 @@ containers:
       HOME: /work/.home
       PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     
+    # Cross compiling requires features only available in nightly Rust
+
+    # Add nightly toolchain and make it the default
+    - !Sh |
+        rustup toolchain add nightly
+        rustup default nightly
+
     # Using xargo to build crate core requires rust-src
-    - !Sh "rustup component add rust-src"
+    - !Sh |
+       rustup component add rust-src
 
-    # Install cross compiled standard crates
-    # Choose from list obtained with command "listTargets"
-    # Magic: knowing which target name matches your target chip and ARM architecture
-    # - !Sh "rustup target add thumbv7em-none-eabi"
+    # Ensure nightly toolchain with source
+
+    # This fails with error
+    # toolchain 'nightly-x86_64-unknown-linux-gnu' does not contain component 'rust-std' for target 'thumbv7em-none-eabi'
     # See Rust issue #709, rustup target list is misleading, you may need to build your own crates
+    # Instead of using rustup to add target, use xargo, see below.
+    # Add target (create sysroot)  !!! Some only available in nightly
+    #- !Sh |
+    #    rustup target add --toolchain nightly thumbv7em-none-eabi
 
-    # Create sysroot for target?
-    - !Sh "rustup target add thumbv7em-none-eabi"
-
-
+    # This is not needed since xargo knows core is always needed
     # Configure xargo to know target needs crate core.   !!!! Capital "X"
-    - !Text
-      /work/Xargo.toml: |
-        [target.foo.dependencies.core]
+    #- !Text
+    #  /work/Xargo.toml: |
+    #    [target.foo.dependencies.core]
     
-
-    # Superfluous??
     # Configure cargo for cross compilation: use GNU gcc as cross linker
+    # Other people put rustflags here for linker options.  See <target>.json for those
     - !EnsureDir /work/.cargo
     - !Text
       /work/.cargo/config: |
         [target.foo]
         linker = "arm-none-eabi-gcc"
+
+    # thumbv7em-none-eabi
+
+    # Bare requires an implementation of crt0
+    # See manifest dependency rO
+
+    # Build using xargo to manage sysroot
+    # !!! absolute path to our <target>.json, sans '.json'
+    - !Sh |
+        xargo build --verbose --target foo
 
 
     # Apparently the base container's env is not inherited by subcontainer?
@@ -128,6 +168,11 @@ containers:
       USER: bootch
       RUST_TARGET_PATH: /work
     
+
+
+
+
+
 commands:
 
   # container/rust inspection commands
