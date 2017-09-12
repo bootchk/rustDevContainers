@@ -4,6 +4,13 @@
 
 containers:
   rustdev:
+  
+   # container's more permanent env
+    # !!! Rust installs to ~/.cargo/bin
+    environ:
+      PATH: /work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      HOME: /work/.home
+      
     setup:
     - !Ubuntu xenial
 
@@ -13,18 +20,18 @@ containers:
     - !Install [curl]
 
     # rustup install script
+    # rustup.rs downloaded and renamed to .sh
+    # --prefix=/usr
     - !Download
       url: https://sh.rustup.rs
       path: /work/rustup.sh
       mode: 0o744
-    - !Sh "/work/rustup.sh -y"
+    - !Sh "/work/rustup.sh  -y "
     - !Remove /work/rustup.sh
 
-    # container's more permanent env
-    # !!! Rust installs to ~/.cargo/bin
-    environ:
-      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      HOME: /work/.home
+    # 
+    #- !Sh "cargo install xargo"
+    - !Sh "/work/.home/.cargo/bin/cargo install xargo"
 
     
 commands:

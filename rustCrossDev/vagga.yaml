@@ -4,8 +4,13 @@
 
 # compiles rust for a target other than the container's host
 
+# implementation notes
+# Using a chain of containers checkpoints containers so they don't rebuild when one fails to install
+
 containers:
-  rustCrossDev:
+
+  # basic dev container
+  base:
     setup:
     - !Ubuntu xenial
 
@@ -14,35 +19,165 @@ containers:
     # rustup requires curl
     - !Install [curl]
 
-    # rustup install script
-    - !Download
-      url: https://sh.rustup.rs
-      path: /work/rustup.sh
-      mode: 0o744
-    - !Sh "/work/rustup.sh -y"
-    - !Remove /work/rustup.sh
 
-    # cargo is installed but it is not in the path yet, add to path for short duration
-    - !Env
-      PATH: /work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # Rust dev built on top of basic
+  rustDev:
+  
+    environ: &rustenv
+      LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
+      PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
+      HOME: /work/target
+      # CARGO_HOME: /work/target/.cargo
 
-    # install Xargo (cross compiling helper)
-    - !Sh "/work/.home/.cargo/bin/cargo install xargo"
+    setup:
+      # depends on previous container
+      - !Container base
+      
+      
+      # container's more permanent env
+      # !!! Rust installs to ~/.cargo/bin
+      #environ:
+      #  PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      #  HOME: "/work/.home"
+      # Create dir where Rust installs
+      #- !EnsureDir /work/.home
+      
+      # rustup install script
+      #- !Download
+      #  url: https://sh.rustup.rs
+      #  path: /rustup.sh
+      #  mode: 0o744
+      #- !Sh "/rustup.sh -y"
+      #- !Remove /rustup.sh
+    
+      - !TarInstall
+        url: "https://static.rust-lang.org/dist/rust-1.20.0-x86_64-unknown-linux-gnu.tar.gz"
+        script: "./install.sh --prefix=/usr --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
+ 
+      # - !Sh "ls -R"
 
-    # container's more permanent env
-    # !!! Rust installs to ~/.cargo/bin
-    environ:
-      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      HOME: /work/.home
 
     
+  # container for cross compiling Rust to any target
+  rustCrossDev:
+  
+    # cargo installs to $CARGO_HOME/.cargo/bin but falls back to /tmp/.cargo/bin if CARGO_HOME is not defined???
+    # cargo installs generated artifacts to $CARGO_TARGET_DIR but defaults to /tmp?
+    # Here, define CARGO_HOME, because /tmp seems to get cleared
+    environ:
+      # PATH: /tmp/.cargo/bin:/musl/bin:/usr/local/bin:/usr/bin:/bin
+      CARGO_HOME: /work/target/.cargo
+      
+    setup:
+    # depends on previous container
+    - !Container rustDev
+    
+    # install Xargo (cross compiling helper)
+    - !Sh "cargo install xargo"
+    
+    # it installed to /tmp/...  , which goes away, so move it to where cargo binary is installed
+    - !Sh "mv /tmp/.cargo/bin/xargo /usr/bin"
+    
+    #- !Sh "ls -R"
+    
+  
+  # Beefed up rustCrossDev, having cargo clone subcommand
+  rustCrossDev2:
+    setup:
+      # depends on previous container
+      - !Container rustCrossDev
+  
+      # cargo-clone requires pkg-config to find OpenSSL library
+      - !Install [pkg-config]
+      
+      # cargo-clone build uses cmake
+      - !Install [cmake]
+      
+      # cargo-clone requires openssl library
+      - !Install [libssl-dev]
+      
+      # clone subcommand is not installed in default  Rust installation
+      - !Sh "cargo install cargo-clone"
+      
+      # mv from build dir /tmp
+      - !Sh "mv /tmp/.cargo/bin/cargo-clone /usr/bin"
+  
+  
+  # container for cross compiling Rust to a target in ARM Cortex M family
+  rustCortexM:
+  
+    setup:
+    # depends on previous container
+    - !Container rustCrossDev2
+    
+    # remove previously installed stuff
+    # !!! This deletes any hacks you made
+    # -f no prompts, and ignore if not exist
+    - !Sh "rm -Rf cortex-m-quickstart"
+    - !Sh "rm -Rf demo"
+    
+    # fetch source of crate 
+    # from official rust repository crates.io
+    # to /work
+    - !Sh "cargo clone cortex-m-quickstart --vers 0.1.1"
+    
+    # rename so we can hack
+    - !Sh "mv cortex-m-quickstart demo"
+    
+    # TODO futz with Cargo.toml metadata to reflect new author
+    - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
+  
+    
 commands:
+
+  # Conventional commands
+  # Purpose should be to run and test ultimate project artifact, an application
+  
   test: !Command
     description: Test xargo is installed in container
+    container: rustDev
+    run: |
+      which cargo
+      cargo --version
+      
+  testHello: !Command
+    description: Test build hello for Cortex M
+    container: rustCortexM
+    run: |
+      cd demo
+      xargo build --example hello
+  
+  
+  run: !Command
+    description: Build blinky, burn to target, and run remote debugger
+    container: rustCrossDev
+    run: |
+      xargo build --target thumbv7m-none-eabi
+      
+  # Commands to test container sanity
+  
+  testCargo: !Command
+    description: Test cargo is installed in container rustDev
+    container: rustDev
+    run: |
+      which cargo
+      cargo --version
+    
+  testXargo: !Command
+    description: Test xargo is installed in container rustCrossDev
     container: rustCrossDev
     run: |
       which xargo
       xargo --version
+      
+  testPkgConfig: !Command
+    description: Test pkg-config is installed and will find openssl in container rustCrossDev2
+    container: rustCrossDev2
+    run: |
+      which pkg-config
+      pkg-config --libs --cflags openssl
+
+  # Commands to help debug containters
 
   list: !Command
     description: List container's root directory, recursive
@@ -50,10 +185,26 @@ commands:
     run: |
       ls -R /
 
-  run: !Command
-    description: Build blinky, burn to target, and run remote debugger
+  # Not working???
+  findXargo: !Command
+    description: Find xargo
     container: rustCrossDev
     run: |
-      xargo build --target thumbv7m-none-eabi
+      "find / -name xargo"
+      
+  env: !Command
+    description: List env of rustDev
+    container: rustDev
+    run: |
+      env
+      
+  listDemo: !Command
+    description: List demo directory of rustCortexM
+    container: rustCortexM
+    run: |
+      ls -al /work/demo
+      
+      
+      
 
 
