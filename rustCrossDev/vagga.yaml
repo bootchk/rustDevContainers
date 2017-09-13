@@ -1,26 +1,37 @@
 
 
 # vagga configuration for a cross rust dev environment
-
 # compiles rust for a target other than the container's host
 
-# implementation notes
-# Using a chain of containers checkpoints containers so they don't rebuild when one fails to install
+# Using a chain of containers.
+# Checkpoints containers so they don't rebuild when one fails to install
+# Each more  specific than its parent
+
 
 containers:
 
-  # basic dev container
+  # basic container having C language tools
+  
   base:
+  
     setup:
     - !Ubuntu xenial
+    
+    # !!! Add repositories/ppa's for some "interesting" packages such as gcc-arm-none-eabi
+    # - !UbuntuUniverse
 
+    # C compiler and other tools
     # overkill? but still doesn't install curl?
     - !Install [build-essential, ca-certificates]
-    # rustup requires curl
-    - !Install [curl]
+
+    # rustup.sh invokes curl
+    - !BuildDeps [curl]
 
 
-  # Rust dev built on top of basic
+
+  # container having Rust language tools
+  # compiling to host target only
+  
   rustDev:
   
     environ: &rustenv
@@ -55,9 +66,9 @@ containers:
         script: "./install.sh --prefix=/usr --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
  
       # - !Sh "ls -R"
-
-
+      
     
+
   # container for cross compiling Rust to any target
   rustCrossDev:
   
@@ -81,7 +92,9 @@ containers:
     #- !Sh "ls -R"
     
   
+  
   # Beefed up rustCrossDev, having cargo clone subcommand
+  
   rustCrossDev2:
     setup:
       # depends on previous container
@@ -101,6 +114,7 @@ containers:
       
       # mv from build dir /tmp
       - !Sh "mv /tmp/.cargo/bin/cargo-clone /usr/bin"
+  
   
   
   # container for cross compiling Rust to a target in ARM Cortex M family
@@ -127,20 +141,20 @@ containers:
     # TODO futz with Cargo.toml metadata to reflect new author
     - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
   
+   
     
+
+
+
+  
+
 commands:
+
 
   # Conventional commands
   # Purpose should be to run and test ultimate project artifact, an application
   
   test: !Command
-    description: Test xargo is installed in container
-    container: rustDev
-    run: |
-      which cargo
-      cargo --version
-      
-  testHello: !Command
     description: Test build hello for Cortex M
     container: rustCortexM
     run: |
@@ -154,6 +168,8 @@ commands:
     run: |
       xargo build --target thumbv7m-none-eabi
       
+      
+      
   # Commands to test container sanity
   
   testCargo: !Command
@@ -162,6 +178,7 @@ commands:
     run: |
       which cargo
       cargo --version
+    
     
   testXargo: !Command
     description: Test xargo is installed in container rustCrossDev
@@ -177,13 +194,43 @@ commands:
       which pkg-config
       pkg-config --libs --cflags openssl
 
+
+
   # Commands to help debug containters
+
+  testRustup: !Command
+    description: Test rustup is installed in container
+    container: rustCrossDev
+    run: |
+      which rustup
+      rustup --version
 
   list: !Command
     description: List container's root directory, recursive
     container: rustCrossDev
     run: |
       ls -R /
+  
+  listTargets: !Command
+    description: List targets precompiled by Rust
+    container: rustCrossARMDev
+    run: |
+      rustc --print target-list
+
+  # This doesn't seem to work, maybe xargo is not log enabled
+  catRustLog: !Command
+    description: invoke xargo to build sysroot with logging enabled
+    container: rustCrossBareARMDev
+    run: |
+      RUST_LOG=xargo xargo --target foo
+
+  listSysroot: !Command
+    description: List sysroot i.e. system crates
+    container: rustCrossBareARMDev
+    run: |
+      rustc --print sysroot
+
+
 
   # Not working???
   findXargo: !Command
@@ -191,6 +238,8 @@ commands:
     container: rustCrossDev
     run: |
       "find / -name xargo"
+      
+    
       
   env: !Command
     description: List env of rustDev
@@ -204,7 +253,4 @@ commands:
     run: |
       ls -al /work/demo
       
-      
-      
-
-
+ 

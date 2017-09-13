@@ -1,0 +1,105 @@
+# Container that can cross compile Rust
+  # to ARM where the ARM architecture is supported by Rust project
+
+
+  rustCrossARMDev:
+    setup:
+    - !Container rustDev
+
+    # install Xargo (Rust cross compiling helper)
+    - !Sh "cargo install xargo"
+    # --force"
+
+    # Install package of GCC cross toolchain
+    # Note that triple name given by GCC is not the same given by Rust but id's the same target(s)
+    # Note that package is in not in main Ubuntu repository, but in universe
+    # - !Install [gcc-arm-none-eabi]
+    
+    # Install cross compiled standard crates
+    # Choose from list obtained with command "listTargets"
+    # Magic: knowing which target name matches your target chip and ARM architecture
+    # - !Sh "rustup target add thumbv7em-none-eabi"
+    # See Rust issue #709, rustup target list is misleading, you may need to build your own crates
+
+    # Ensure linker for ARM is installed
+    # Ensure Xargo is installed
+    #- !Sh |
+    #   arm-none-eabi-gcc --version
+    #    xargo --version
+    #    echo "Done setup container rustCrossARMDev"
+    
+    
+    
+    
+    
+    
+    
+    
+  # Subcontainer; cross compiling to bare metal ARM.
+  # Where app not use std crate, and core crate is not available, but cross-compiled from source
+
+  # Not using target name "thumbv7em-none-eabi" because that is in Rust's list of supported targets,
+  # but we need a custom target definition that has different link options (for bare)
+
+  rustCrossBareARMDev:
+    setup:
+    - !Container rustCrossARMDev
+
+    # Apparently env of parent container is not env of this setup, so add path to rust executables cargo, rustup, etc.
+    - !Env
+      HOME: /work/.home
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    
+    # Cross compiling requires features only available in nightly Rust
+
+    # Add nightly toolchain and make it the default
+    - !Sh |
+        rustup toolchain add nightly
+        rustup default nightly
+
+    # Using xargo to build crate core requires rust-src
+    - !Sh |
+       rustup component add rust-src
+
+    # Ensure nightly toolchain with source
+
+    # This fails with error
+    # toolchain 'nightly-x86_64-unknown-linux-gnu' does not contain component 'rust-std' for target 'thumbv7em-none-eabi'
+    # See Rust issue #709, rustup target list is misleading, you may need to build your own crates
+    # Instead of using rustup to add target, use xargo, see below.
+    # Add target (create sysroot)  !!! Some only available in nightly
+    #- !Sh |
+    #    rustup target add --toolchain nightly thumbv7em-none-eabi
+
+    # This is not needed since xargo knows core is always needed
+    # Configure xargo to know target needs crate core.   !!!! Capital "X"
+    #- !Text
+    #  /work/Xargo.toml: |
+    #    [target.foo.dependencies.core]
+    
+    # Configure cargo for cross compilation: use GNU gcc as cross linker
+    # Other people put rustflags here for linker options.  See <target>.json for those
+    - !EnsureDir /work/.cargo
+    - !Text
+      /work/.cargo/config: |
+        [target.foo]
+        linker = "arm-none-eabi-gcc"
+
+    # thumbv7em-none-eabi
+
+    # Bare requires an implementation of crt0
+    # See manifest dependency rO
+
+    # Build using xargo to manage sysroot
+    # !!! absolute path to our <target>.json, sans '.json'
+    - !Sh |
+        xargo build --verbose --target foo
+
+
+    # Apparently the base container's env is not inherited by subcontainer?
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      USER: bootch
+      RUST_TARGET_PATH: /work
+    

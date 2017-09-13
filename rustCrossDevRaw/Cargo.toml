@@ -1,0 +1,16 @@
+[package]
+name = "blinky"
+version = "0.1.0"
+authors = ["bootch"]
+
+# Forces build of crate "core"
+[dependencies]
+rust-libcore = "*"
+
+# Reduces code by not emitting instruction to unwind a panic back to the non-existent OS
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
+

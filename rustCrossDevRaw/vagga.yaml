@@ -1,0 +1,232 @@
+
+
+# vagga configuration for a cross rust dev environment
+# compiles rust for a target other than the container's host
+
+# A nested set of containers, each more  specific than its parent
+
+containers:
+
+  # container able to compile rust targeted to host
+  # ensures rustup, rustc, cargo installed
+
+  rustDev:
+    setup:
+    - !Ubuntu xenial
+    # !!! Add repositories/ppa's for some "interesting" packages such as gcc-arm-none-eabi
+    - !UbuntuUniverse
+
+    # C compiler and other tools, to remain in container
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+
+    # rustup.sh invokes curl
+    # Temporary to container
+    - !BuildDeps [curl]
+
+    # Temporary def of HOME since rustup.sh installs to it
+    - !Env
+      HOME: /work/.home
+
+    # Configure so rustup installs inside container's hidden file
+    - !Env
+      RUST_TARGET_PATH: /work/.home
+
+    - !EnsureDir /work/.home
+    - !EnsureDir /work/.home/.cargo/bin
+
+    # rustup install script
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.sh
+      mode: 0o744
+    # -y means: ignore apparent HOME discrepancies
+    - !Sh "/work/rustup.sh -y"
+    - !Remove /work/rustup.sh
+    # rustup is installed, but rustup.sh is gone
+
+    # container's more permanent env
+    # !!! Rust installs to ~/.cargo/bin
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      
+
+
+  # Container that can cross compile to ARM where the ARM architecture is supported by Rust project
+  # ensures GNU ARM toolchain installed (specifically linker used by Rust)
+
+  # Apparently the base container must be finished before its contents (cargo) can be invoked during setup? so make this a subcontainer
+  # ??? Maybe it is just a matter of inherited env?
+  rustCrossARMDev:
+    setup:
+    - !Container rustDev
+
+    # Apparently env of parent container is not env of this setup, so add path to rust executables cargo, rustup, etc.
+    - !Env
+      HOME: /work/.home
+      PATH:  "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+    # Not install Xargo
+
+    # Install package of GCC cross toolchain
+    # Note that triple name given by GCC is not the same given by Rust but id's the same target(s)
+    # Note that package is in not in main Ubuntu repository, but in universe
+    - !Install [gcc-arm-none-eabi]
+
+    # rust build nightly requires git???
+    # - !Install [git]
+
+    
+    # This changes rustup semantics for current directory?
+    # - !Sh "rustup override add nightly"
+
+    # Apparently the base container's environ is not inherited by subcontainer?
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      USER: bootch
+    
+
+
+
+  # Subcontainer: cross compiling to bare metal ARM
+  
+
+  # container that cross compiles to bare metal arm, where app not use std crate, 
+  # and core crate is not availble, but cross-compiled from source
+  rustCrossBareARMDev:
+    setup:
+    - !Container rustCrossARMDev
+
+    # Apparently env of parent container is not env of this setup, so add path to rust executables cargo, rustup, etc.
+    - !Env
+      HOME: /work/.home
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    
+    # To build crate core requires rust-src
+    - !Sh |
+       rustup default nightly
+       rustup component add rust-src
+
+
+    # Install cross compiled standard crates
+    # Choose from list obtained with command "listTargets"
+    # Magic: knowing which target name matches your target chip and ARM architecture
+    # - !Sh "rustup target add thumbv7em-none-eabi"
+    # See Rust issue #709, rustup target list is misleading, you may need to build your own crates
+
+    # Create sysroot for target?
+    #- !Sh "rustup target add thumbv7em-none-eabi"
+
+
+    # Configure xargo to know target needs crate core.   !!!! Capital "X"
+    #- !Text
+    #  /work/Xargo.toml: |
+    #    [target.foo.dependencies.core]
+    
+
+ 
+    # Configure cargo for cross compilation: use GNU gcc as cross linker
+    - !EnsureDir /work/.home/.cargo
+    - !Text
+      /work/.home/.cargo/config: |
+        [build]
+        target = "thumbv7em-none-eabi"
+
+        [target.thumbv7em-none-eabi]
+        linker = "arm-none-eabi-gcc"
+        rustflags = [
+          "-C", "link-arg=-mcpu=cortex-m4",
+          "-C", "link-arg=-mthumb",
+          "-C", "link-arg=-Tlayout.ld",
+          "-C", "link-arg=-nostartfiles",
+          ]
+
+    
+
+
+    # Apparently the base container's env is not inherited by subcontainer?
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      USER: bootch
+      RUST_TARGET_PATH: /work/.home
+    
+commands:
+
+  # container/rust inspection commands
+
+  testSimpleRust: !Command
+    description: Test simple rust tools are installed in innermost container
+    container: rustDev
+    run: |
+      which cargo
+      cargo --version
+      which rustc
+      rustc --version
+      which rustup
+      rustup --version
+      which git
+      git --version
+
+  testXargo: !Command
+    description: Test xargo is installed in container
+    container: rustCrossBareARMDev
+    run: |
+      which xargo
+      xargo --version
+
+  list: !Command
+    description: List container's root directory, recursive
+    container: rustCrossDev
+    run: |
+      ls -R /
+  
+  listTargets: !Command
+    description: List targets precompiled by Rust??
+    container: rustCrossARMDev
+    run: |
+      rustc --print target-list
+
+  findRustSrc: !Command
+    description: Determine location of rust src
+    container: rustCrossBareARMDev
+    run: |
+      pwd
+      find . -name lib.rs
+
+  # This doesn't seem to work, maybe xargo is not log enabled
+  catRustLog: !Command
+    description: invoke xargo to build sysroot with logging enabled
+    container: rustCrossBareARMDev
+    run: |
+      RUST_LOG=xargo xargo --target foo
+
+  listSysroot: !Command
+    description: List sysroot i.e. system crates
+    container: rustCrossBareARMDev
+    run: |
+      rustc --print sysroot
+
+
+
+  # By convention (canonical names) "run" is build and run the project
+
+  # use cargo, not xargo
+  run: !Command
+    description: Build blinky, burn to target, and run remote debugger
+    container: rustCrossBareARMDev
+    run: |
+      rustup default nightly
+      cargo build --verbose --target thumbv7em-none-eabi
+
+  newHelloWorld: !Command
+    description: Create helloWorld project
+    container: rustCrossDev
+    run: |
+      cargo new helloWorld --bin
+
+
+
+
