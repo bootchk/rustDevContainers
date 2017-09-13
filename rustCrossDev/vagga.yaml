@@ -25,14 +25,15 @@ containers:
     - !Install [build-essential, ca-certificates]
 
     # rustup.sh invokes curl
-    - !BuildDeps [curl]
+    # BuildDeps is temporary to container, Install is permanent
+    # - !BuildDeps [curl]
 
 
 
   # container having Rust language tools
   # compiling to host target only
   
-  rustDev:
+  rustStableDev:
   
     environ: &rustenv
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
@@ -61,13 +62,37 @@ containers:
       #- !Sh "/rustup.sh -y"
       #- !Remove /rustup.sh
     
+      # install stable Rust release
       - !TarInstall
         url: "https://static.rust-lang.org/dist/rust-1.20.0-x86_64-unknown-linux-gnu.tar.gz"
         script: "./install.sh --prefix=/usr --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
  
       # - !Sh "ls -R"
       
-    
+   
+  # container for nightly unstable Rust
+  # required for cross compiling
+  
+  rustNightlyDev:
+    setup:
+      # depends on previous container
+      - !Container base
+      
+      # Needed temporarily for next steps
+      - !BuildDeps [curl]
+      # Used by rustup.sh
+      - !BuildDeps [file]
+      # sudo used by rustup.sh but can't be removed
+      - !Install [sudo]
+      
+      # Not working?
+      # - !Sh "curl -s https://static.rust-lang.org/rustup.sh | sh -s -- --channel=nightly"
+      
+      - !Sh "curl -f -L https://static.rust-lang.org/rustup.sh -O"
+      - !Sh "chmod +x /work/rustup.sh"
+      - !Sh "/work/rustup.sh --channel=nightly"
+      
+      
 
   # container for cross compiling Rust to any target
   rustCrossDev:
@@ -81,7 +106,7 @@ containers:
       
     setup:
     # depends on previous container
-    - !Container rustDev
+    - !Container rustNightlyDev
     
     # install Xargo (cross compiling helper)
     - !Sh "cargo install xargo"
@@ -180,8 +205,8 @@ commands:
   # Commands to test container sanity
   
   testCargo: !Command
-    description: Test cargo is installed in container rustDev
-    container: rustDev
+    description: Test cargo is installed in container rustNightlyDev
+    container: rustNightlyDev
     run: |
       which cargo
       cargo --version
