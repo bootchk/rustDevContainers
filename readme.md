@@ -8,65 +8,73 @@ Status:  work in progress.  Some scripts don't work, and include much cruft.
 May be portable to Windows and OSX since vagga is?  But the container contains Linux, so best if you know Linux.
 
 
-
-Two example containers:
+Example vagga scripts for other languages:
 -
 
-    - rustDev: for compiling to the target host in the container
-    - rustCrossDev: for cross-compiling to a different target than the host of the container (e.g. embedded ARM) using Xargo
+ - https://github.com/andreaferretti/vagga-examples.git
+
+
+Example vagga scripts in this repository:
+-
+
+ - rustDev: for compiling Rust to the target host in the container
+ - rustCrossDev: for cross-compiling Rust to a different target than the host of the container (e.g. embedded ARM) using Xargo
 
 
 Alternatives/References:
 -
 
-     - use the Rust playground.
-     - https://github.com/japaric/cross  a Docker virtual machine for cross-compiling in Rust
-     - https://github.com/cbiffle/minimal-embedded-rust a Vagrant virtual machine for "
-     - https://users.rust-lang.org/t/feedbackwanted-idea-cargo-wrapper-for-zero-setup-cross-compilation/8141  discusses alternatives
+  - use the Rust playground.
+  - https://github.com/japaric/cross  a Docker virtual machine for cross-compiling in Rust
+  - https://github.com/cbiffle/minimal-embedded-rust a Vagrant virtual machine for "
+  - https://users.rust-lang.org/t/feedbackwanted-idea-cargo-wrapper-for-zero-setup-cross-compilation/8141  discusses alternatives
 
 References about Rust embedded ARM (sans containers/vm):
-     - https://github.com/hannobraun/embedded
-     - https://github.com/japaric/f3   STM32 F3 is an ARM Cortex-M4F similar to the chip I want to target?
+  - https://github.com/hannobraun/embedded
+  - https://github.com/japaric/f3   STM32 F3 is an ARM Cortex-M4F similar to the chip I want to target?
 
 
 See my post at https://wordpress.com/post/plashless.wordpress.com/3454
 
 
-Using Vagga instead of Vagrant or Docker
+Vagga as an alternative to Vagrant or Docker
 -
 
 For all alternatives:
-- you must install the container/vm tool
-- you must learn the container/vm tool's language
-- you can quickly delete the containers/vm
 
-I like the Vagga language, and the fact that all configuration of containers is mostly in one script file, instead of spread around in many config files and shell scripts.
+ - you must install the container/vm tool
+ - you must learn the container/vm tool's language
+ - you can quickly delete the containers/vm
+
+I like the Vagga language.  All configuration of containers is mostly in one script file, instead of spread around in many config files and shell scripts.  Also, Vagga is written in Rust, so using Vagga is eating your own dog food.
 
 One advantage of Vagrant/Dock is that there exist repositories which create containers/vm's for rust embedded.
-This aims to do the same for Vagga.
+This repository aims to do the same for Vagga.
 
 
 Quick start
 -
 
-    - install Vagga
-    - clone this repository
-    - open a terminal
-    - >cd to one of the example directories
-    - >vagga   (ask vagga to print list of commands defined in the config file)
-    - >vagga foo  (e.g. testCargo, or testXargo or any other defined  command)
-    - expect possible many minutes of downloading
-    - expect see the final output from the command e.g. "rustc 1.15.1 (021bd294c 2017-02-08)"
+ - install Vagga
+ - clone this repository
+ - open a terminal
+ - >cd to one of the example directories
+ - >vagga   (ask vagga to print list of commands defined in the config file)
+ - >vagga foo  (e.g. testCargo, or testXargo or any other defined  command)
+ - expect possible many minutes of downloading
+ - expect see the final output from the command e.g. "rustc 1.15.1 (021bd294c 2017-02-08)"
 
 
 In rustDev:
-    - >vagga run
-    - expect "Hello world" 
+
+ - >vagga run
+ - expect "Hello world" 
 
 In rustCrossDev:
-    - >vagga run
-    - expect a clean compile and link
-    - future: expect LED to blink (embedded.)
+
+ - >vagga run
+ - expect a clean compile and link
+ - future: expect LED to blink (embedded.)
 
 Vagga and commands
 -
@@ -77,8 +85,8 @@ The exception is that invoking "vagga" without a command will show you the avail
 
 Two commands are Vagga conventions:  (you still must define them, and others will expect you to.)
 
-    - run   run the project
-    - test  run the test suite of the project
+ - run   run the project
+ - test  run the test suite of the project
     
 For a normal SW development project, they would run you application and its test suite.  Here, in these examples, they don't.
     

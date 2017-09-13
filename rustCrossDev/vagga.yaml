@@ -124,6 +124,10 @@ containers:
     # depends on previous container
     - !Container rustCrossDev2
     
+    # cargo seems to want to put .cargo_lock in read only /root?
+    # so redirect home directory of user root to a writeable directory
+    - !Sh "sed -i '/^root/{s@/root@/work/.home@;}' /etc/passwd"
+    
     # remove previously installed stuff
     # !!! This deletes any hacks you made
     # -f no prompts, and ignore if not exist
@@ -141,6 +145,9 @@ containers:
     # TODO futz with Cargo.toml metadata to reflect new author
     - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
   
+  # cargo seems to want to put .cargo_lock in /root?
+    #volumes:
+       #/root: !BindRW /work/tmp
    
     
 
