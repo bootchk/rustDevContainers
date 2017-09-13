@@ -69,28 +69,89 @@ containers:
  
       # - !Sh "ls -R"
       
-   
+  
+  
+  # container having rustup
+  
+  
+  rustup:
+  
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      RUSTUP_HOME: /work/.home
+      
+      # RUSTUP_HOME determines where rustup installs???
+      
+    setup:
+    
+    # depends on previous container
+    - !Container base
+  
+    # 
+    - !Install [curl]
+    
+    # Used by rustup.sh
+    #- !BuildDeps [file]
+    # sudo used by rustup.sh but can't be removed
+    #- !Install [sudo]
+    
+    
+    # rustup.sh is deprectated, use rustup.rs
+    
+    # This is the deprecated stuff
+    # - !Sh "curl -f -L https://static.rust-lang.org/rustup.sh -O"
+    # - !Sh "chmod +x /work/rustup.sh"
+    # - !Sh "/work/rustup.sh --channel=nightly"
+    
+    # One way to do it, but not working?
+    # - !Sh "curl https://sh.rustup.rs -sSf | sh"    --channel=nightly"
+    
+    # Two step procedure?
+    #- !Sh "curl https://sh.rustup.rs -sSf -O"
+    #- !Sh "chmod +x /work/rustup.rs"
+    #- !Sh "/work/rustup.rs --default-toolchain nightly"
+    
+    
+    - !Env
+      RUST_TARGET_PATH: /work/.home
+      
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.rs
+      mode: 0o744
+    - !Sh "/work/rustup.rs -y --default-toolchain nightly"
+    
+    # Unless ?? is set in env, installs to /tmp/.rustup and it goes away???
+    
+    # - !Sh "/work/rustup.rs component add rust-src"
+    
+    # rustup is not in the manifest for nightly?
+    # - !Sh "which rustup"
+    
+    # rustup is not installable by cargo
+    # - !Sh "cargo install rustup"
+  
+    - !Sh "ls -alR /tmp"
+  
+  
+  
+  
   # container for nightly unstable Rust
   # required for cross compiling
   
   rustNightlyDev:
+  
+    environ: &rustenv
+      HOME: /work/target
+      
     setup:
       # depends on previous container
-      - !Container base
+      - !Container rustup
       
-      # Needed temporarily for next steps
-      - !BuildDeps [curl]
-      # Used by rustup.sh
-      - !BuildDeps [file]
-      # sudo used by rustup.sh but can't be removed
-      - !Install [sudo]
+      - !Sh "rustup "
       
-      # Not working?
-      # - !Sh "curl -s https://static.rust-lang.org/rustup.sh | sh -s -- --channel=nightly"
       
-      - !Sh "curl -f -L https://static.rust-lang.org/rustup.sh -O"
-      - !Sh "chmod +x /work/rustup.sh"
-      - !Sh "/work/rustup.sh --channel=nightly"
       
       
 
@@ -169,6 +230,9 @@ containers:
     
     # TODO futz with Cargo.toml metadata to reflect new author
     - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
+    
+    # xargo wants source
+    - !Sh "rustup component add rust-src"
   
   # cargo seems to want to put .cargo_lock in /root?
     #volumes:
@@ -210,6 +274,20 @@ commands:
     run: |
       which cargo
       cargo --version
+  
+  testCargoInRustup: !Command
+    description: Test cargo is installed in container rustup
+    container: rustup
+    run: |
+      which cargo
+      cargo --version
+      
+  testRustup: !Command
+    description: Test rustup is installed in container rustup
+    container: rustup
+    run: |
+      which rustup
+      rustup --version
     
     
   testXargo: !Command
@@ -229,13 +307,6 @@ commands:
 
 
   # Commands to help debug containters
-
-  testRustup: !Command
-    description: Test rustup is installed in container
-    container: rustCrossDev
-    run: |
-      which rustup
-      rustup --version
 
   list: !Command
     description: List container's root directory, recursive

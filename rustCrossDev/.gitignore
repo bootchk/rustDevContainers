@@ -9,3 +9,4 @@ target
 Cargo.lock
 
 .cargo
+/rustup.sh
