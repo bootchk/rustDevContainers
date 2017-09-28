@@ -135,6 +135,21 @@ Artifacts created by Rust
 
 
 
+Notes about Vagga language
+-
+
+The language is vagga configuration scripts:
+
+    - is YAML
+    - is domain specific
+    
+So certain syntax comes from YAML, some from vagga.
+
+For example, | is yaml syntax for "multi-line literal."
+
+For example, !Sh is vagga syntax for a command.
+
+
 Notes:
 -
 
