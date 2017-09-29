@@ -103,3 +103,61 @@
       USER: bootch
       RUST_TARGET_PATH: /work
     
+    
+    
+    
+    
+    
+    
+    
+    
+    # clone, patch, build, install xargo
+    - !Sh rm -rf /work/xargo
+    - !Sh "git clone https://github.com/japaric/xargo.git"
+    - !EnsureDir /work/xargo
+    
+    # patch.  Hacky, not very specific
+    - !Sh "sed -i 's/0.1.7/0.2.0/g' /work/xargo/Cargo.toml"
+    #- !Sh "sed -i 's/meta.channel/meta.unwrap().channel/g' /work/xargo/src/main.rs"
+    #- !Sh "sed -i 's/meta.host/meta.unwrap().host/g' /work/xargo/src/main.rs"
+    - !Sh "sed -i 's/rustc::version()/rustc::version().unwrap()/g' /work/xargo/src/main.rs"
+    
+    - !Sh |
+        cd /work/xargo
+        cargo install --force
+    
+    
+    # it installed to /tmp/...  , which goes away, so move it to where cargo binary is installed
+    #- !Sh "mv /tmp/.cargo/bin/xargo /usr/bin"
+    
+    
+    
+    
+    
+    rustTestVersion:
+  
+    environ: *environ
+    
+    #  PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    # /work/target/.cargo
+    #  CARGO_HOME: /work/.home/.cargo
+      
+    setup:
+    - !Container rustupWSourceAndClone
+    
+    # env of build
+    - !Env
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      RUST_TARGET_PATH: /work/.home
+   
+    
+    # clone,  build, test
+    - !Sh rm -rf /work/rustc-version-rs
+    - !Sh "git clone https://github.com/Kimundi/rustc-version-rs.git"
+    - !EnsureDir /work/rustc-version-rs
+   
+    
+    - !Sh |
+        cd /work/rustc-version-rs
+        cargo build
+        cargo test
