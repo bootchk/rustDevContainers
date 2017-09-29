@@ -1,0 +1,116 @@
+
+
+# vagga configuration for a simple rust dev environment
+
+# !!! Implementation of containers uses subcontainers.
+# But note that a subcontainer does NOT inherit environ of parent
+# (a !Container command just uses the setup from the parent, not the environ clause)
+# Thus you must replicate the environ into the subcontainer
+
+containers:
+
+  # OS and basic build tools
+  base:
+    setup:
+    - !Ubuntu xenial
+
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+
+    # rustup requires curl
+    - !Install [curl]
+    
+    # create home directory
+    - !EnsureDir /work/.home
+ 
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+
+  
+  # rustup
+  
+  # rustup.sh is deprecated, use rustup.rs
+  # 
+  
+  rustup:
+    
+    environ:
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      CARGO_HOME: /work/.home
+      # configure location of rustup folder
+      RUSTUP_HOME: /work/.home/.rustup
+      
+      
+    setup:
+    - !Container base
+    
+    - !EnsureDir /work/.home/.rustup
+    
+    # Temporary def of HOME since rustup.sh installs to it
+    - !Env
+      HOME: /work/.home
+      RUSTUP_HOME: /work/.home/.rustup
+      CARGO_HOME: /work/.home
+      
+    # rustup install script
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.rs
+      mode: 0o744
+      
+      # -y means "without prompt"
+    - !Sh "/work/rustup.rs -y"
+    - !Remove /work/rustup.rs
+    
+    #- !Sh ls -al .home
+    #- !Sh ls -al .home/.cargo
+    - !Sh ls -al /tmp
+    
+    - !Sh  env
+    
+    # -!Sh curl https://sh.rustup.rs -sSf > /work/rustup
+
+    
+commands:
+
+  # Test foo is installed in container bar
+  
+  testCurlBase: !Command
+    description: 
+    container: base
+    run: |
+      which curl
+      curl --version
+      
+  testRustupRustup: !Command
+    description: 
+    container: rustup
+    run: |
+      which rustup
+      rustup --version
+
+  testEnvRustup: !Command
+    container: rustup
+    run: env
+    
+  listRustup: !Command
+    container: rustup
+    run: [ls -al /.home/.cargo/bin]
+    
+  list: !Command
+    description: List container's root directory, recursive
+    container: rustdev
+    run: |
+      ls -R /
+
+  run: !Command
+    description: Build and run helloWorld
+    container: rustdev
+    run: |
+      cargo build
+      ./target/debug/helloWorld
+
+    
+      
