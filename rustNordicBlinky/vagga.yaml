@@ -1,0 +1,561 @@
+
+
+# vagga configuration for a cross rust dev environment
+# The container will compile rust for a target other than the container's host.
+# E.g. target is embedded computer having such as ARM ISA
+
+# Using a chain of containers.
+# Checkpoints containers so they don't rebuild when one fails to install
+# Each more  specific than its parent
+# In the order of likelihood to fail (most stable containers first.)
+
+
+containers:
+
+  # basic container having C language tools
+  
+  base:
+  
+    setup:
+    - !Ubuntu xenial
+    
+    # !!! Add repositories/ppa's for some "interesting" packages such as gcc-arm-none-eabi
+    # - !UbuntuUniverse
+
+    # C compiler and other tools
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+
+    # Subsequent containers (rustup) need curl
+    - !Install [curl]
+    
+    # Subsequent containers optionally use git
+    - !Install [git]
+
+
+
+
+  
+  
+  # container having rustup
+  # rustup is toolchain mulitplexer (nightly and other versions of rust tools).
+  # cargo will not install rustup; rustup installs cargo.
+  
+  # An alternative is to install a single version of rust from a binary distribution.
+  
+  # Rustup installation installs not only rustup, but a (first) version of rust tools.
+  # Default to version: nightly (i.e. unstable).
+  
+  # We choose nightly because cross compiling requires it (as of this writing.)
+  
+  rustup:
+  
+    # Use yaml alias (anchor) "environ" to be referenced later by "*environ"
+    environ: &environ
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      HOME: /work/.home
+      RUSTUP_HOME: /work/.home/.rustup
+      CARGO_HOME: /work/.home/.cargo
+      # the path to target specification files, i.e. armfoo.json
+      # RUST_TARGET_PATH: /work/.home
+      
+    setup:
+    
+    # depends on previous container
+    - !Container base
+    
+    # rustup.sh is deprecated, use rustup.rs which downloads and runs rustup-init
+    
+    # Configure rustup-init with env vars in environ of build
+    # Unless these are set in build env, installs to /tmp/.rustup and it goes away
+    - !Env
+      RUST_TARGET_PATH: /work/.home
+      RUSTUP_HOME: /work/.home/.rustup
+      CARGO_HOME: /work/.home/.cargo
+      
+    - !Download
+      url: https://sh.rustup.rs
+      path: /work/rustup.rs
+      mode: 0o744
+      
+    - !Sh "/work/rustup.rs -y --default-toolchain nightly"
+    
+    - !Sh "ls -R"
+ 
+ 
+ 
+ 
+  # Cross compiling using xargo requires rust src
+  
+  rustupWSource:
+    environ: *environ
+      
+    setup:
+    - !Container rustup
+    
+    - !Env
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      RUST_TARGET_PATH: /work/.home
+      
+    - !Sh "rustup component add rust-src"
+  
+  
+  
+  
+  # container having cargo's clone subcommand
+  
+  rustupWSourceAndClone:
+    environ: *environ
+    
+    setup:
+      # depends on previous container
+      - !Container rustupWSource
+  
+      # cargo-clone requires pkg-config to find OpenSSL library
+      - !Install [pkg-config]
+      
+      # cargo-clone build uses cmake
+      - !Install [cmake]
+      
+      # cargo-clone requires openssl library
+      - !Install [libssl-dev]
+      
+      # clone subcommand is not installed in default  Rust installation
+      - !Sh "cargo install cargo-clone --force"
+      
+      # mv from build dir /tmp
+      # - !Sh "mv /tmp/.cargo/bin/cargo-clone /usr/bin"
+  
+      
+
+
+
+  # container for cross compiling Rust to any target
+  # i.e. having xargo
+  # installing xargo does not require source or clone
+  # running xargo requires source
+  
+  rustCrossDev:
+  
+    environ: *environ
+    
+    setup:
+    - !Container rustupWSourceAndClone
+    
+    # env of build
+    - !Env
+      PATH: "/work/.home/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      RUST_TARGET_PATH: /work/.home
+    
+    # install Xargo (cross compiling helper) from crate.io
+    # --force overwrites previous installation
+    - !Sh "cargo install xargo --force"
+   
+    
+  
+  
+  # container for cross compiling Rust to a specific target family: ARM Cortex M family
+  # E.g. having demo source
+  # E.g. where demo source has a board package for ARM?
+  
+  rustCortexM:
+  
+    environ: *environ
+    
+    
+    #  RUST_BACKTRACE: 1
+      
+    setup:
+    # depends on previous container
+    - !Container rustCrossDev
+
+    
+    # This is cruft only necessary if env variable for various homes are not correct
+    # cargo seems to want to put .cargo_lock in read only /root?
+    # so redirect home directory of user root to a writeable directory
+    # - !Sh "sed -i '/^root/{s@/root@/work/.home@;}' /etc/passwd"
+    
+    # remove previously installed stuff
+    # !!! This deletes any hacks you made
+    # -f no prompts, and ignore if not exist
+    - !Sh "rm -Rf cortex-m-quickstart"
+    - !Sh "rm -Rf demo"
+    
+    # fetch source of crate 
+    # from official rust repository crates.io
+    # to /work
+    - !Sh "cargo clone cortex-m-quickstart --vers 0.1.1"
+    
+    # rename so we can hack
+    - !Sh "mv cortex-m-quickstart demo"
+    
+    # TODO futz with Cargo.toml metadata to reflect new author
+    - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
+    
+    # xargo needs source, assert already installed
+  
+    # cargo seems to want to put .cargo_lock in /root?
+    #volumes:
+       #/root: !BindRW /work/tmp
+    
+    # install target into rust toolchain
+    # This looks for a binary in the distribution for core and std libs.
+    # Not needed, since xargo will build said libs.
+    #- !Sh "rustup target add thumbv7m-none-eabi"
+    
+    
+    # !!! Don't do this since we are still building tools for the host
+    #
+    # configure default target for build so can omit --target flag on builds
+    # the target must be in listTargets
+    #- !Text
+    #  /work/.home/.cargo/config: |
+    #    [build]
+    #    target = "thumbv7m-none-eabi"
+    #    [test]
+    #    target = "thumbv7m-none-eabi"
+    
+    - !Sh "ls -R"
+
+
+
+  # See http://blog.japaric.io/quickstart/
+ 
+  # tools for next container 
+  
+  rustNordicTools:
+  
+    environ: *environ
+      
+    setup:
+    - !Container rustCortexM
+  
+    # Can't find?  Supposedly package exists in Xenial
+    # - !Install [dos2unix]
+    # Instead use sed 's/\r$//' dos.txt > unix.txt
+    
+    # --force to overwrite
+    # quickstart uses --vers 0.7.0, here use latest
+    - !Sh "cargo install svd2rust --force"
+    
+    # not absolutely required
+    # Pretty printing using rustfmt  helps error messages when compiling SVD's rust
+    # This installs rustfmt and enables "cargo fmt" subcommand
+    - !Sh cargo install rustfmt-nightly --force
+   
+    # cargo subcommand "add"
+    - !Sh cargo install cargo-edit --force
+    
+    
+   
+  # specialize to vendor: Nordic 
+  # specialize to product family: nrf5x where x in [1,2]
+  # nrf51 is Cortex M0 thumbv6m-none-eabi
+  # nrf52 is Cortex M4 thumbv7m-none-eabi
+  # each product family has specialized products: nrf51832, nrf52
+  
+  rustNordic:
+    environ: *environ
+      
+    setup:
+    - !Container rustNordicTools
+    
+    # cargo wants $USER when "new" a project
+    - !Env USER: bootch
+    
+    # new library for device support
+    # cargo won't create a directory that exists
+    - !Sh if [ -d "nordic" ]; then rm -rf nordic; fi;
+    
+    # --vcs omit git repository
+    - !Sh cargo new --lib nordic --vcs none
+    
+    # Fetch SVD
+    # !!! Here choose family but rename to generic nrf5x.svd
+    # user/repository/branch/file
+    - !Sh |
+        cd nordic
+        curl -LO https://github.com/posborne/cmsis-svd/raw/master/data/Nordic/nrf52.svd
+        mv nrf52.svd nrf5x.svd
+        
+    # Elide carriage returns (same as dos2unix)
+    # -i in place 
+    - !Sh sed -i 's/\r$//' nordic/nrf5x.svd
+    
+    
+    
+    # Convert SVD to rust
+    - !Sh |
+        cd nordic
+        svd2rust -i nrf5x.svd > src/lib.rs
+    
+    # prettyprint so compile error messages are nice when fails compile
+    
+    # relax rustfmt
+    - !Remove /work/nordic/rustfmt.toml
+    - !Text
+      /work/nordic/rustfmt.toml: |
+        max_width = 2000
+        
+    - !Sh |
+        cd nordic
+        cargo fmt
+        
+    # Patch flaw for NRF52
+    - !Sh sed -i 's/216 => TXPOWERR::NEG30DBM,//' /work/nordic/src/lib.rs
+    
+    
+    # Define dependencies of device crate
+    - !Sh | 
+        cd nordic
+        cargo add cortex-m vcell bare-metal
+    
+    # Build device crate (driver library for NRF5x)
+    # !!! Must choose ARM architecture corresponding to svd
+    # nrf51: xargo build --target thumbv6m-none-eabi
+    
+    - !Sh |
+        cd nordic
+        xargo build --target thumbv7m-none-eabi
+  
+  
+  # blinky
+  # Earlier /demo was created as project template.
+  # Hack it
+  # Configure it for nrf52
+  
+  rustNordicBlinky:
+    environ: *environ
+      
+    setup:
+    - !Container rustNordic
+    
+    # Specify memory layout
+    # nrf52832
+    #- !Remove /work/demo/memory.x
+    - !Sh echo memory.x
+    - !Text
+      /work/demo/memory.x: |
+          MEMORY
+          {
+          FLASH : ORIGIN = 0x00000000, LENGTH = 512K
+          RAM :   ORIGIN = 0x20000000, LENGTH = 64K
+          }
+          _stack_start = ORIGIN(RAM) + LENGTH(RAM);
+    
+    # depend on a device crate built earlier
+    # path to local build, not just a name (which would look in crates.io)
+    - !Sh | 
+        cd demo
+        cargo add /work/nordic
+        
+    # hack app, i.e. main.rs
+    - !Sh |
+        cd demo
+        cp examples/hello.rs src/main.rs
+        
+    # ARM linker
+    # As packaged by OS distributor
+    # Also maintained and packaged by ARM
+    - !UbuntuUniverse
+    - !Install [binutils-arm-none-eabi]
+
+
+    - !Sh unset CARGO_INCREMENTAL
+    
+    - !Sh echo done
+    
+    # !!! Read about error messages in demo/src/lib.rs i.e. the template
+    
+    
+commands:
+
+  testBlinky: !Command
+    description: Test build blinky
+    container: rustNordicBlinky
+    # target must be same as earlier
+    run: |
+      cd demo
+      unset CARGO_INCREMENTAL
+      cargo clean
+      rm -rf ../.home/.xargo
+      xargo build --target thumbv7m-none-eabi -v
+      
+      
+  testNordic: !Command
+    description: Test build hello for nrf51
+    container: rustNordic
+    run: |
+      cd demo
+      xargo build --target thumbv7m-none-eabi -v
+
+  # Conventional commands
+  # Purpose should be to run and test ultimate project artifact, an application
+  
+  # !!! Not working
+  test: !Command
+    description: Test build hello for Cortex M
+    container: rustCortexM
+    run: |
+      cd demo
+      xargo test v--target thumbv7m-none-eabi -v
+  
+  # seems to build something successfully, a library?
+  # seems to build "build.rs"
+  run: !Command
+    description: build demo
+    container: rustCortexM
+    run: |
+      which xargo
+      cd demo
+      xargo build --target thumbv7m-none-eabi -v
+      # thumbv6m-none-eabi IS supported by rustc distribution, i.e. in listTargets
+      # thumbv7m-none-eabi
+      # x86_64-unknown-linux-gnu
+      
+  # !!! Not working
+  hello: !Command
+    description: build demo example hello
+    container: rustCortexM
+    run: |
+      cd demo
+      xargo build --example hello
+      
+  
+  hello2: !Command
+    description: build demo example hello
+    container: rustCortexM
+    run: |
+      cd demo
+      cp examples/hello.rs ..
+      xargo build
+      
+  # TODO Build blinky, burn to target, and run remote debugger
+      
+      
+      
+      
+  # Commands to test container sanity
+  
+  testCargo: !Command
+    description: Test cargo is installed in container rustNightlyDev
+    container: rustNightlyDev
+    run: |
+      which cargo
+      cargo --version
+  
+  testCargoInRustup: !Command
+    description: Test cargo is installed in container rustup
+    container: rustup
+    run: |
+      which cargo
+      cargo --version
+      
+  testRustup: !Command
+    description: Test rustup is installed in container rustup
+    container: rustup
+    run: |
+      which rustup
+      rustup --version
+      
+  testRustc: !Command
+    description: Test rustc is installed in container rustup
+    container: rustup
+    run: |
+      env
+      which rustc
+      rustc -vV
+    
+  testVersion: !Command
+    description: Test rustc-version
+    container: rustTestVersion
+    run: |
+      env
+      which rustc
+      rustc -vV
+    
+    
+  testXargo: !Command
+    description: Test xargo is installed in container rustCrossDev
+    container: rustCrossDev
+    run: |
+      which xargo
+      rustc -vV
+      # xargo --version
+      
+  testCore: !Command
+    description: Test xargo will build core
+    container: rustCrossDev
+    run: |
+      xargo build --target thumbv6m-none-eabi -v
+      rustup target list
+            
+  testPkgConfig: !Command
+    description: Test pkg-config is installed and will find openssl in container rustCrossDev2
+    container: rustCrossDev2
+    run: |
+      which pkg-config
+      pkg-config --libs --cflags openssl
+
+
+
+  # Commands to help debug containters
+
+  list: !Command
+    description: List container's root directory, recursive
+    container: rustCrossDev
+    run: |
+      ls -R /
+  
+  listTargets: !Command
+    description: List targets precompiled by Rust
+    container: rustCortexM
+    run: |
+      rustc --print target-list
+
+  # This doesn't seem to work, maybe xargo is not log enabled
+  catRustLog: !Command
+    description: invoke xargo to build sysroot with logging enabled
+    container: rustCrossBareARMDev
+    run: |
+      RUST_LOG=xargo xargo --target foo
+
+  listSysroot: !Command
+    description: List sysroot i.e. system crates
+    container: rustCrossBareARMDev
+    run: |
+      rustc --print sysroot
+
+
+
+  # Not working???
+  findXargo: !Command
+    description: Find xargo
+    container: rustCrossDev
+    run: |
+      "find / -name xargo"
+      
+    
+      
+  env: !Command
+    description: List env of rustDev
+    container: rustDev
+    run: |
+      env
+      
+  listDemo: !Command
+    description: List demo directory of rustCortexM
+    container: rustCortexM
+    run: |
+      ls -al /work/demo
+     
+     
+        
+  
+    #- !Sh "ls -alR /tmp"
+    #- !Sh "ls -R"
+    
+    # cargo installs to $CARGO_HOME/.cargo/bin but falls back to /tmp/.cargo/bin if CARGO_HOME is not defined???
+    # cargo installs generated artifacts to $CARGO_TARGET_DIR but defaults to /tmp?
+    # Here, define CARGO_HOME, because /tmp seems to get cleared
+ 
