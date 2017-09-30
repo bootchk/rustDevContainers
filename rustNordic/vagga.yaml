@@ -281,6 +281,8 @@ containers:
     # -i in place 
     - !Sh sed -i 's/\r$//' nordic/nrf5x.svd
     
+    
+    
     # Convert SVD to rust
     - !Sh |
         cd nordic
@@ -297,6 +299,10 @@ containers:
     - !Sh |
         cd nordic
         cargo fmt
+        
+    # Patch flaw for NRF52
+    - !Sh sed -i 's/216 => TXPOWERR::NEG30DBM,//' /work/nordic/src/lib.rs
+    
     
     # Define dependencies of device crate
     - !Sh | 
