@@ -155,15 +155,13 @@ containers:
   
   
   # container for cross compiling Rust to a specific target family: ARM Cortex M family
-  # E.g. having demo source
-  # E.g. where demo source has a board package for ARM?
+  # having cortex-m-quickstart template (source)
+  # having ARM linker
+  # See http://blog.japaric.io/quickstart/
   
   rustCortexM:
   
     environ: *environ
-    
-    
-    #  RUST_BACKTRACE: 1
       
     setup:
     # depends on previous container
@@ -192,11 +190,7 @@ containers:
     # TODO futz with Cargo.toml metadata to reflect new author
     - !Sh "sed -i 's/cortex-m-quickstart/demo/g' demo/Cargo.toml"
     
-    # xargo needs source, assert already installed
-  
-    # cargo seems to want to put .cargo_lock in /root?
-    #volumes:
-       #/root: !BindRW /work/tmp
+    # xargo needs rustc source, assert already installed
     
     # install target into rust toolchain
     # This looks for a binary in the distribution for core and std libs.
@@ -204,7 +198,7 @@ containers:
     #- !Sh "rustup target add thumbv7m-none-eabi"
     
     
-    # !!! Don't do this since we are still building tools for the host
+    # !!! Don't do this since we are still building tools for the host architecture
     #
     # configure default target for build so can omit --target flag on builds
     # the target must be in listTargets
@@ -215,13 +209,19 @@ containers:
     #    [test]
     #    target = "thumbv7m-none-eabi"
     
-    - !Sh "ls -R"
+    # ARM linker arm-none-eabi-ld
+    # As packaged by OS distributor inside larger package
+    # Also maintained and packaged by ARM
+    - !UbuntuUniverse
+    - !Install [binutils-arm-none-eabi]
 
 
 
-  # See http://blog.japaric.io/quickstart/
+  
  
-  # tools for next container 
+  # tools for next container
+  # i.e. continue to add tools to host
+  # tools: svd2rust, rustfmt, "and cargo add"
   
   rustNordicTools:
   
@@ -250,8 +250,9 @@ containers:
    
   # specialize to vendor: Nordic 
   # specialize to product family: nrf5x where x in [1,2]
+  # Build a device (register level driver) from SVD
   # nrf51 is Cortex M0 thumbv6m-none-eabi
-  # nrf52 is Cortex M4 thumbv7m-none-eabi
+  # nrf52 is Cortex M4 thumbv7m-none-eabi (or thumbv7em-none-eabihf if you use the FPU)
   # each product family has specialized products: nrf51832, nrf52
   
   rustNordic:
@@ -282,8 +283,6 @@ containers:
     # -i in place 
     - !Sh sed -i 's/\r$//' nordic/nrf5x.svd
     
-    
-    
     # Convert SVD to rust
     - !Sh |
         cd nordic
@@ -301,11 +300,12 @@ containers:
         cd nordic
         cargo fmt
         
-    # Patch flaw for NRF52
+    # Patch flaw in svd for NRF52 that rust compile time errs
     - !Sh sed -i 's/216 => TXPOWERR::NEG30DBM,//' /work/nordic/src/lib.rs
     
     
     # Define dependencies of device crate
+    # ??? Does NOT depend on bare-metal: cortex-m
     - !Sh | 
         cd nordic
         cargo add cortex-m vcell bare-metal
@@ -313,10 +313,21 @@ containers:
     # Build device crate (driver library for NRF5x)
     # !!! Must choose ARM architecture corresponding to svd
     # nrf51: xargo build --target thumbv6m-none-eabi
-    
     - !Sh |
         cd nordic
-        xargo build --target thumbv7m-none-eabi
+        xargo build --target thumbv7m-none-eabi --verbose
+  
+    # generate docs for device crate
+    # Use cargo: understands dependencies
+    # docs to nordic/target/doc
+    - !Sh |
+        cd nordic
+        cargo doc
+        
+    - !Sh ls -al
+  
+  
+  
   
   
   # blinky
@@ -348,24 +359,25 @@ containers:
     - !Sh | 
         cd demo
         cargo add /work/nordic
+    
+    # demo MIGHT also depend on cast (depends on which example)
+    #- !Sh | 
+    #    cd demo
+    #    cargo add cast --target thumbv7m-none-eabi
+    
         
     # hack app, i.e. main.rs
+    # cp examples/hello.rs src/main.rs
     - !Sh |
         cd demo
-        cp examples/hello.rs src/main.rs
-        
-    # ARM linker
-    # As packaged by OS distributor
-    # Also maintained and packaged by ARM
-    - !UbuntuUniverse
-    - !Install [binutils-arm-none-eabi]
-
-
-    - !Sh unset CARGO_INCREMENTAL
+        cp examples/blinky.rs src/main.rs
+ 
     
-    - !Sh echo done
+    # - !Sh echo done
     
     # !!! Read about error messages in demo/src/lib.rs i.e. the template
+    
+    
     
     
 commands:
@@ -376,10 +388,11 @@ commands:
     # target must be same as earlier
     run: |
       cd demo
+      cp examples/blinky.rs src/main.rs
       unset CARGO_INCREMENTAL
       cargo clean
       rm -rf ../.home/.xargo
-      xargo build --target thumbv7m-none-eabi -v
+      xargo build --release --target thumbv7m-none-eabi -v
       
       
   testNordic: !Command
