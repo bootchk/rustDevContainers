@@ -318,8 +318,9 @@ containers:
         xargo build --target thumbv7m-none-eabi --verbose
   
     # generate docs for device crate
-    # Use cargo: understands dependencies
+    # Use cargo (understands dependencies) instead of rustdoc
     # docs to nordic/target/doc
+    # top at nordic/target/doc/nordic/index.html
     - !Sh |
         cd nordic
         cargo doc
@@ -387,12 +388,24 @@ commands:
     container: rustNordicBlinky
     # target must be same as earlier
     run: |
+      # copy hackable app into demo directory
+      echo Copied blinky.rs into project
+      cp blinky.rs demo/src/main.rs
       cd demo
-      cp examples/blinky.rs src/main.rs
       unset CARGO_INCREMENTAL
       cargo clean
       rm -rf ../.home/.xargo
       xargo build --release --target thumbv7m-none-eabi -v
+      arm-none-eabi-readelf -A demo/target/thumbv7m-none-eabi/release/demo
+      arm-none-eabi-objcopy demo/target/thumbv7m-none-eabi/release/demo demo/target/thumbv7m-none-eabi/release/demo.hex
+      
+  binhexBlinky: !Command
+    description: Convert blinky executable from bin to hex
+    container: rustNordicBlinky
+    run: |
+      cd demo
+      arm-none-eabi-readelf -A target/thumbv7m-none-eabi/release/demo
+      arm-none-eabi-objcopy target/thumbv7m-none-eabi/release/demo target/thumbv7m-none-eabi/release/demo.hex
       
       
   testNordic: !Command
