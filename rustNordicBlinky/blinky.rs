@@ -1,4 +1,7 @@
-// examples/blinky.rs
+// 
+// Derived from cortex-m-quickstart repository examples/blinky.rs
+//
+// Retargeted to Nordic nrf52 (probably would work for nrf51).
 
 #![feature(used)]
 #![no_std]
@@ -9,19 +12,18 @@ extern crate cortex_m;
 extern crate cortex_m_rt;
 extern crate nordic;
 
-// use core::u16;
+use core::u8;
 
 // use cast::{u16, u32};
-use cortex_m::asm;
+use cortex_m::asm;	// see default handler
 use nordic::{ RTC0, CLOCK, GPIOTE };  // , P0
 
-//mod frequency {
-    // Frequency of APB1 bus (TIM7 is connected to this bus)
-    // pub const APB1: u32 = 8_000_000;
-//}
 
-/// Timer frequency
-//const FREQUENCY: u32 = 1;
+// at 30uSec/tick, 1e5 is about 3 seconds
+const TICKS_BETWEEN_TOGGLE: u32 = 100000;
+// NRF52DK dev kit has 4 LEDS total, 17, 18, 19, 20
+// type is u8 but value should not exceed 31 on this architecture
+const LED_PIN_INDEX: u8 = 17;	
 
 
 // For all "task" register operations
@@ -33,22 +35,21 @@ use nordic::{ RTC0, CLOCK, GPIOTE };  // , P0
 // Is 1 when event has occurred.
 // Writing 0 clears register.
 
+// NOTE   Most below "unsafe" code is stipulated (safe) atomic write
+
 pub fn start_lfclock() {
-	// Per product spec, write "1" to task register
-	
-    // NOTE(safe) atomic write
+    
     unsafe { (*CLOCK.get()).tasks_lfclkstart.write(|w| w.bits(1)) }
 }
 
 pub fn start_rtc_counter() {
-    // NOTE(safe) atomic write
     unsafe { (*RTC0.get()).tasks_start.write(|w| w.bits(1)) }
 }
 
 
-pub fn is_rtc_compare0_match() -> bool {
-    unsafe { (*RTC0.get()).events_compare0.read().bits() == 1 }
-    // [0]
+pub fn is_rtc_compare0_event() -> bool {
+	// should be 1 on event, but allow any bits set
+    unsafe { (*RTC0.get()).events_compare0.read().bits() != 0 }
 }
 
 pub fn clear_rtc0_compare0_event() {
@@ -56,20 +57,27 @@ pub fn clear_rtc0_compare0_event() {
 }
 
 
-pub fn set_rtc0_compare0() {
-	unsafe { (*RTC0.get()).cc0.write(|w| w.bits(100000)) }
-}
+//pub fn set_rtc0_compare0() {
+//	unsafe { (*RTC0.get()).cc0.write(|w| w.bits(TICKS_BETWEEN_TOGGLE)) }
+//}
 
 // Set compare reg in advance of counter by x
-// Hack, small x (less than 2) won't work because of hw limitation (event will come late, after overflow)
-// Hack, increment is hard coded
+// AKA set alarm on a clock
+
+// This is a hack, NOT correct:
+// In both cases, event may come late, after overflow (clock wrap)
+// 1. small x (less than 2 or 3, see HW datasheet) won't work because of hw limitation 
+// 2. need Lamport's rule to deal with overflow between read counter and set compare
+
 pub fn set_rtc0_compare0_past_counter() {
 	// Counter is 24-bit, with clock semantics (circular, overflows back to 0).
 	unsafe { 
 		let now = (*RTC0.get()).counter.read().bits();
+		
 	    // This should be modulo 24-bit arithmetic
 	    // But it works because the hw masks off all but 24-bits
-	    let new_compare = now + 100000;
+	    let new_compare = now + TICKS_BETWEEN_TOGGLE;
+	    
 	    (*RTC0.get()).cc0.write(|w| w.bits(new_compare));
     }
 }
@@ -97,12 +105,12 @@ pub fn set_rtc0_compare0_past_counter() {
 
 // Configure GPIOTE channel so a task will toggle a pin configured as output.
 // A HW task triggered through a register in the GPIOTE
-// The HW remembers the state of the pin, and HW implements toggle
+// The HW knows state of pin, and HW implements toggle
 pub fn configure_gpiote_to_toggle_pin() {
     // NOTE(safe) atomic write
     
     // Notes on syntax:
-    // config0 is the register  (i.e. CONFIG[0])
+    // config0 is the config register for channel 0 (i.e. CONFIG[0])
     // the write closure takes method calls that return(identify) fields of the register 
     // e.g. w.mode() means the MODE field
     // the field selector takes method calls that return(identify) an enumerated value for the field 
@@ -110,9 +118,10 @@ pub fn configure_gpiote_to_toggle_pin() {
     
     // Select pin for this channel
     // Value to write is [0..31] the index of the pin
-    // Here, pin 
-    unsafe { (*GPIOTE.get()).config0.write(|w| w.psel().bits(1)) }
-    // Pin is out and triggered by task
+    // i.e. a 5-bit number (not a 32-bit bitmask!!!)
+    // bits() expects type u8
+    unsafe { (*GPIOTE.get()).config0.write(|w| w.psel().bits(LED_PIN_INDEX)) }
+    // Pin is out and triggered by start task
     unsafe { (*GPIOTE.get()).config0.write(|w| w.mode().task()) }
     // toggle (wherease SET means high and CLEAR means low)
     unsafe { (*GPIOTE.get()).config0.write(|w| w.polarity().toggle()) }
@@ -130,7 +139,8 @@ pub fn initialize_peripherals() {
 	// Non-exclusive use of peripherals.
 	// We don't expect any interrupts
 	
-	// Power up peripherals
+	// Start peripherals
+	
     // nrf52 POR condition:
     // RTC's clock source is LFCLK
     // LFCLK source is LFRC (internal RC osc.)
@@ -146,11 +156,7 @@ pub fn initialize_peripherals() {
     start_rtc_counter();
     // we don't wait, but eventually clock and counter will start and blinking will occur
 
-    //
     configure_gpiote_to_toggle_pin();
-    
-    // TODO configure compare
-
 }
 
 
@@ -161,6 +167,7 @@ fn main() {
     // assert counter is running
     // assert compare register not set
     
+    // cruft from original stmf3 blinky
     // Configure pin as output
     // configure_gpio_pin_out();
     //gpioe.moder.modify(|_, w| w.moder9().output());
@@ -180,16 +187,17 @@ fn main() {
     set_rtc0_compare0_past_counter();
     // assert event will occur
     
+    toggle_led();
+    
     // app logic: loop, waiting on timer event, toggling led
     loop {
         // Busy wait for event
-        while ! is_rtc_compare0_match() {}
+        while ! is_rtc_compare0_event() {}
 		// rtc0.events_compare0.read().uif().is_no_update
 		
         clear_rtc0_compare0_event();
         //tim7.sr.modify(|_, w| w.uif().clear());
 
-		// Toggle LED
 		toggle_led();
 		
 		set_rtc0_compare0_past_counter();

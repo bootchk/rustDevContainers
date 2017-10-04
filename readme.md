@@ -81,7 +81,7 @@ Vagga and commands
 
 Commands are defined in vagga.yaml.  Every command invocation is on a local shell, in the form "vagga foo".  You don't have a Vagga "shell" having a prompt for commands.
 
-The exception is that invoking "vagga" without a command will show you the available (that you have defined in vagga.yaml) commands.
+Invoking "vagga" without a command will show you the available (that you have defined in vagga.yaml) commands.
 
 Two commands are Vagga conventions:  (you still must define them, and others will expect you to.)
 

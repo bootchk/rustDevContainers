@@ -72,7 +72,10 @@ containers:
       RUST_TARGET_PATH: /work/.home
       RUSTUP_HOME: /work/.home/.rustup
       CARGO_HOME: /work/.home/.cargo
-      
+    
+    # Remove now and after build container
+    - !Remove /work/rustup.rs
+    
     - !Download
       url: https://sh.rustup.rs
       path: /work/rustup.rs
@@ -149,7 +152,8 @@ containers:
     
     # install Xargo (cross compiling helper) from crate.io
     # --force overwrites previous installation
-    - !Sh "cargo install xargo --force"
+    # use 3.8 until xargo #167 is fixed
+    - !Sh "cargo install xargo --vers 0.3.8 --force"
    
     
   
@@ -182,7 +186,8 @@ containers:
     # fetch source of crate 
     # from official rust repository crates.io
     # to /work
-    - !Sh "cargo clone cortex-m-quickstart --vers 0.1.1"
+    # WAS --vers 0.1.1
+    - !Sh "cargo clone cortex-m-quickstart"
     
     # rename so we can hack
     - !Sh "mv cortex-m-quickstart demo"
@@ -332,7 +337,7 @@ containers:
   
   
   # blinky
-  # Earlier /demo was created as project template.
+  # Assert /demo exists as project template.
   # Hack it
   # Configure it for nrf52
   
@@ -368,10 +373,11 @@ containers:
     
         
     # hack app, i.e. main.rs
-    # cp examples/hello.rs src/main.rs
+    # Here we insure SOME main.rs exists, but typically
+    # you later (in a vagga command) overwrite with copy your own main.rs into the template
     - !Sh |
         cd demo
-        cp examples/blinky.rs src/main.rs
+        cp examples/hello.rs src/main.rs
  
     
     # - !Sh echo done
@@ -395,18 +401,29 @@ commands:
       unset CARGO_INCREMENTAL
       cargo clean
       rm -rf ../.home/.xargo
-      xargo build --release --target thumbv7m-none-eabi -v
-      arm-none-eabi-readelf -A demo/target/thumbv7m-none-eabi/release/demo
-      arm-none-eabi-objcopy demo/target/thumbv7m-none-eabi/release/demo demo/target/thumbv7m-none-eabi/release/demo.hex
+      xargo build  --target thumbv7m-none-eabi -v
+      arm-none-eabi-readelf -A target/thumbv7m-none-eabi/release/demo
+  
       
   binhexBlinky: !Command
+    description: Convert blinky executable from elf to Intel hex (to use nrfjprog loader)
+    container: rustNordicBlinky
+    run: |
+      cd demo
+      # sanity test
+      arm-none-eabi-readelf -A target/thumbv7m-none-eabi/release/demo
+      # objcopy perform conversion to new file
+      arm-none-eabi-objcopy -O ihex target/thumbv7m-none-eabi/release/demo target/thumbv7m-none-eabi/release/demo.hex
+   
+  disassembleBlinky: !Command
     description: Convert blinky executable from bin to hex
     container: rustNordicBlinky
     run: |
       cd demo
+      # sanity test
       arm-none-eabi-readelf -A target/thumbv7m-none-eabi/release/demo
-      arm-none-eabi-objcopy target/thumbv7m-none-eabi/release/demo target/thumbv7m-none-eabi/release/demo.hex
-      
+      # objdump -d is dissassemble
+      arm-none-eabi-objdump -d target/thumbv7m-none-eabi/release/demo
       
   testNordic: !Command
     description: Test build hello for nrf51
