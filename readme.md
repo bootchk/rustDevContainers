@@ -1,7 +1,20 @@
 
 
-Experimental, example configuration files for Vagga containers for developing in Rust language.
-Use these to quickly get a non-invasive development environment for programming in Rust.
+Experimental, example Vagga configuration files that create Vagga containers for developing in Rust language.
+Use these to quickly get a non-invasive development environment for programming in Rust, especially embedded Rust for ARM.
+
+The goal is to have a dev environment that is reproducible and deletable.
+Anything you do to set up your dev environment (system administration) goes into a Vagga script.
+You can have many dev environments.
+You can hack at the dev environments without worrying about root priveleges.
+
+This is particularly appropriate when you:
+
+   - are just learning Rust and embedded programming.
+   - are shopping for tools and want to try them in various combinations
+   - are using tools that change daily (like embedded Rust tools)
+
+One disadvantage is that you must learn about Vagga and where it puts files.
 
 Status:  work in progress.  Some scripts don't work, and include much cruft.
 

@@ -1,0 +1,1 @@
+A container to test gdb-dashboard invoked from within vagga.

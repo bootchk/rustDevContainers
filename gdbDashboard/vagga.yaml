@@ -1,0 +1,94 @@
+
+
+# vagga configuration to test gdb-dashboard with gdb in a terminal
+
+# Using a chain of containers.
+# Checkpoints containers so they don't rebuild when one fails to install
+# Each more  specific than its parent
+# In the order of likelihood to fail (most stable containers first.)
+
+
+containers:
+
+  # basic container having C language tools
+  
+  base:
+  
+    setup:
+    - !Ubuntu xenial
+    
+    # !!! Add repositories/ppa's for some "interesting" packages such as gcc-arm-none-eabi
+    # - !UbuntuUniverse
+
+    # C compiler and other tools
+    # overkill? but still doesn't install curl?
+    - !Install [build-essential, ca-certificates]
+    
+    # Subsequent containers use wget
+    - !Install [wget]
+    
+    # Subsequent containers use gdb
+    - !Install [gdb]
+
+
+  
+  
+  # container having:
+  # gdb-dashboard
+  
+  gdbDashboard:
+    
+    # Use yaml alias (anchor) "environ" to be referenced later by "*environ"
+    environ: &environ
+      # define HOME so gdb will find .gdbinit
+      HOME: /work/.home
+      
+    setup:
+    
+    # depends on previous container
+    - !Container base
+      
+    
+    # Remove any prior download
+    - !Sh rm -rf /work/.home/.gdbinit
+    
+    # gdb-dashboard is a hidden file that goes into home directory
+    # gdb will find it as command line gdb starts up in a terminal
+    # Usuall install is "wget -P ~ git.io/.gdbinit" but ~ is not defined while vagga is building
+    - !Sh "wget -P /work/.home git.io/.gdbinit"
+ 
+    # gdb will not load .gdbinit from some directories without this (for security reasons)
+    # append a line to .gdbinit
+    - !Sh echo 'set auto-load safe-path /' >> /work/.home/.gdbinit
+    
+    # gdb-dashboard only displays when target program is running
+    # so compile a small target program
+    - !Text
+      /work/test.c: |
+        main() {
+        int foo = 1;
+        }
+        
+    - !Sh gcc test.c
+    # Ensure compilation succeeded
+    - !Sh stat /work/a.out
+    
+    
+    - !Sh ls -al
+    
+
+commands:
+
+  # After gdb comes up, enter 'start' so the target runs
+
+  testDashboard: !Command
+    description: Test gdbDashboard
+    container: gdbDashboard
+    run: |
+      echo Whiching gdb
+      which gdb
+      echo Invoking gdb
+      echo After it comes up, enter 'start'
+      echo Then expect to see the colored dashboard
+      gdb a.out
+  

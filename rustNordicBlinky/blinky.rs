@@ -16,7 +16,7 @@ use core::u8;
 
 // use cast::{u16, u32};
 use cortex_m::asm;	// see default handler
-use nordic::{ RTC0, CLOCK, GPIOTE };  // , P0
+use nordic::{ RTC0, CLOCK, GPIOTE, P0 };  // , P0
 
 
 // at 30uSec/tick, 1e5 is about 3 seconds
@@ -88,19 +88,16 @@ pub fn set_rtc0_compare0_past_counter() {
 // but the GPIO is renamed P0 in the svd.
 // Note there are registers for each pin, and also registers that are bit-fields by pin
 
-//pub fn configure_gpio_pin_out() {
-    // NOTE(safe) atomic write
-//    unsafe { (*P0.get()).pin_cnf0.dir.write(|w| w.bits(1)) }
-//}
+pub fn configure_gpio_pin_17_out() {
+    unsafe { (*P0.get()).pin_cnf17.write(|w| w.dir().output()) }  // bits(1)) }
+}
 
-//pub fn set_gpio_pin_high(){
-    // NOTE(safe) atomic write
-//    unsafe { (*GPIOTE.get()).pin_cnf0.write(|w| w.bits(1)) }
-//}
-//pub fn set_gpio_pin_low() {
-    // NOTE(safe) atomic write
-//    unsafe { (*GPIOTE.get()).pin_cnf0.write(|w| w.bits(1)) }
-//}
+pub fn set_gpio_pin_high(){
+    unsafe { (*P0.get()).out.write(|w| w.pin17().set_bit()) }
+}
+pub fn set_gpio_pin_low() {
+    unsafe { (*P0.get()).out.write(|w| w.pin17().clear_bit()) }
+}
 
 
 // Configure GPIOTE channel so a task will toggle a pin configured as output.
@@ -155,8 +152,6 @@ pub fn initialize_peripherals() {
     start_lfclock();
     start_rtc_counter();
     // we don't wait, but eventually clock and counter will start and blinking will occur
-
-    configure_gpiote_to_toggle_pin();
 }
 
 
@@ -183,6 +178,20 @@ fn main() {
     // Start the timer
     //tim7.cr1.modify(|_, w| w.cen().enabled());
 
+    // First toggle led using GPIO
+    configure_gpio_pin_17_out();
+    
+    // low is on since pin sinks current  
+    for x in 0..100000 {
+         set_gpio_pin_low();
+    }
+    for x in 0..100000 {
+         set_gpio_pin_high();
+    }
+    
+    // Now use gpiote, which overrides GPIO setting
+    configure_gpiote_to_toggle_pin();
+    
 
     set_rtc0_compare0_past_counter();
     // assert event will occur
