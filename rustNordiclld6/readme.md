@@ -2,9 +2,9 @@
 
 Derived from rustNordicBlinky
 
-Crux:  Changed to use llvm's lld instead of arm-none-eabi-ld linker.
-Installs base of Ubuntu artufl version (since its repository contains package lld-5.0)
-Installs package lld-5.0
+Crux:  Changed to use llvm's lld 6 instead of arm-none-eabi-ld linker.
+
+Build lld instead of getting the packaged version.
 
 blinky.rs is for Nordic platform.
 

@@ -18,7 +18,7 @@ containers:
   
     setup:
     - !Ubuntu artful
-    # xenial
+    # artful is latest, but not released xenial
     
     # !!! Add repositories/ppa's for some "interesting" packages such as gcc-arm-none-eabi
     # - !UbuntuUniverse
@@ -33,16 +33,100 @@ containers:
     # Subsequent containers optionally use git
     - !Install [git]
     
-    # Subsequent containers use llvm's lld linker
-    # For xenial, only 4.0 available.  5.0 available in artful (still in dev)
-    # !!! executable name is ld.lld-4.0
-    # 5.0 is needed to support MEMORY command in scripts
-    - !Install [lld-5.0]
-
-
-
+    # Subsequent containers need cmake
+    - !Install [cmake]
 
   
+  # Container with source and tools to build latest llvm project, built de novo
+  # We only want lld, but easiest to build all of llvm
+  
+  baseWithLlvmTools:
+  
+    setup:
+    
+      - !Container base
+      
+      # In artful, dev package allows building llvm
+      # But most items suffixed with 5.0
+      # - !Install [llvm-5.0-dev]
+      
+      # get entire llvm, not just lld
+      #- !Git
+      #  url: https://github.com/llvm-mirror/llvm.git
+      #  path: /work/git/llvm-project
+        
+      #  get only lld
+      - !Git
+        url: https://github.com/llvm-mirror/lld.git
+        path: /work/git/lld
+        
+      # build llvm requires Python
+      - !Install [python]
+      
+      # assert container ready to build llvm
+      
+      
+  baseWithLlvm:
+     
+     setup:
+    
+      - !Container baseWithLlvmTools
+      
+      # Only building ARM target
+      - !EnsureDir /work/build
+      - !Sh |
+          cd /work/build
+          cmake \
+            -DCMAKE_BUILD_TYPE:STRING=Debug \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DLLVM_TARGETS_TO_BUILD="ARM" \
+            ../git/lld
+          make -j2
+          make install
+      
+       # -G "Unix Makefiles" \
+       # -DLLVM_ENABLE_PROJECTS=lld \    # for flat directory layout
+       # -DCMAKE_CXX_FLAGS="-std=c++11 -fpermissive" \
+       # -DLLVM_TARGETS_TO_BUILD="X86" \
+       # -DLLVM_CONFIG_PATH="/usr/bin/llvm-config-5.0" \
+
+
+  # Deprecated, use above container instead
+  #baseWithLld6:
+  
+    # lld build scripts need llvm-config
+    # !!! Need LLVM_CONFIG_PATH defined in build environ, or passed to cmake -D
+
+      
+    #setup:
+    
+      #- !Container baseWithLlvm
+  
+      # Get from git mirror, not svn original
+      #- !Git
+      #  url: https://github.com/llvm-mirror/lld.git
+       # path: /work/git/lld
+  
+      # We want the ELF variant (one of three) but we build everthing
+      
+      # Generate make files
+      #- !EnsureDir /work/build
+      #- !Sh |
+      #    cd /work/build
+      #    cmake -G "Unix Makefiles" \
+      #      -DCMAKE_CXX_FLAGS="-std=c++11 -fpermissive" \
+      #      -DCMAKE_BUILD_TYPE:STRING=Debug \
+      #      -DLLVM_TARGETS_TO_BUILD="X86" \
+       #     -DLLVM_CONFIG_PATH="/usr/bin/llvm-config-5.0" \
+       #      /work/git/lld
+             
+           # -DCMAKE_INSTALL_PREFIX:PATH=$LLD_INSTALL \
+      
+      # make, test, and install
+     # - !Sh |
+     #     cd /work/build
+     #     make install
+          
   
   # container having rustup
   # rustup is toolchain mulitplexer (nightly and other versions of rust tools).
@@ -69,7 +153,7 @@ containers:
     setup:
     
     # depends on previous container
-    - !Container base
+    - !Container baseWithLlvm
     
     # rustup.sh is deprecated, use rustup.rs which downloads and runs rustup-init
     
@@ -90,7 +174,7 @@ containers:
       
     - !Sh "/work/rustup.rs -y --default-toolchain nightly"
     
-    - !Sh "ls -R"
+    # - !Sh "ls -R"
  
  
  
@@ -414,6 +498,28 @@ containers:
     
 commands:
 
+  testLlvm-config: !Command
+    container: baseWithLlvm
+    description: Test llvm-config is runnable
+    run: |    
+      which llvm-config-5.0
+      llvm-config-5.0 --version
+
+  testLldBuild: !Command
+    container: baseWithLlvm
+    run: |
+      # test host linker
+      which lld-6.0
+      ld.lld-6.0 --version
+      which ld.lld
+      ld.lld --version
+      
+  cleanLlvmBuild: !Command
+    container: baseWithLlvm
+    run: |
+      cd build
+      make clean
+    
   testLld: !Command
     description: Test lld
     container: rustNordicBlinky
